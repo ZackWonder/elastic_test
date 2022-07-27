@@ -2,12 +2,14 @@ package main
 
 import (
 	"crypto/tls"
+	"elastic_test/elkstore"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/mottaquikarim/esquerydsl"
 )
 
 func main() {
@@ -34,4 +36,23 @@ func main() {
 	}
 	fmt.Println(resp)
 	// => panic: dial tcp: i/o timeout
+
+	repo := NewElkPlanetRepo(es)
+	repo.Create(&Planet{
+		PlanetID: "999",
+		Name:     "Earth",
+		Stage:    "beta",
+		Status:   "active",
+	})
+	planets := []*Planet{}
+	err = elkstore.Search(&repo.ElkStore, &esquerydsl.QueryDoc{
+		And: []esquerydsl.QueryItem{
+			{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
+		},
+	}, &planets)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(planets)
+
 }
