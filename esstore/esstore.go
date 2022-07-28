@@ -65,6 +65,41 @@ func ESCreate(ctx context.Context, store *ESStore, item ESDocument) error {
 	return nil
 }
 
+func ESUpdate(ctx context.Context, store *ESStore, item ESDocument) error {
+	doc := struct {
+		Doc ESDocument `json:"doc"`
+	}{
+		Doc: item,
+	}
+
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+
+	res, err := store.ESClient.Update(
+		store.IndexName,
+		item.DocumentID(),
+		bytes.NewReader(payload),
+		store.ESClient.Update.WithContext(ctx),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			return err
+		}
+		err := e["error"].(map[string]interface{})
+		return fmt.Errorf("[%s] %s: %s", res.Status(), err["type"], err["reason"])
+	}
+
+	return nil
+}
+
 func ESExists(ctx context.Context, store *ESStore, id string) (bool, error) {
 	res, err := store.ESClient.Exists(store.IndexName, id, store.ESClient.Exists.WithContext(ctx))
 	if err != nil {
@@ -138,6 +173,7 @@ func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.Query
 		return err
 	}
 
+	*arrayPtrOut = make([]*T, len(r.Hits.Hits))
 	for _, hit := range r.Hits.Hits {
 		*arrayPtrOut = append(*arrayPtrOut, hit.Source)
 	}

@@ -66,6 +66,21 @@ func main() {
 	}
 
 	{
+		planet := &Planet{
+			PlanetID: "999",
+			Name:     "Earth",
+			Stage:    "beta",
+			Status:   "active",
+		}
+		err := esstore.ESUpdate(context.Background(),
+			repo.ESStore, planet)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(planet)
+	}
+
+	{
 		planet := Planet{}
 		err := esstore.ESFindOne(context.Background(),
 			repo.ESStore, "999", &planet)
