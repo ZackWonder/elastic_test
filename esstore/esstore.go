@@ -1,4 +1,4 @@
-package elkstore
+package esstore
 
 import (
 	"bytes"
@@ -6,24 +6,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/mottaquikarim/esquerydsl"
 )
 
-type ElkDocument interface {
+type ESDocument interface {
 	DocumentID() string
 }
 
-type ElkStore struct {
-	ElkClient *elasticsearch.Client
+type ESStore struct {
+	ESClient  *elasticsearch.Client
 	IndexName string
 }
 
-func CreateIndex(store *ElkStore) error {
-	res, err := store.ElkClient.Indices.Create(
+func CreateIndex(ctx context.Context, store *ESStore, mapping string) error {
+	res, err := store.ESClient.Indices.Create(
 		store.IndexName,
-		// store.ElkClient.Indices.Create.WithBody(strings.NewReader(mapping)),
+		store.ESClient.Indices.Create.WithBody(strings.NewReader(mapping)),
 	)
 	if err != nil {
 		return err
@@ -35,17 +36,17 @@ func CreateIndex(store *ElkStore) error {
 	return nil
 }
 
-func Create(ctx context.Context, store *ElkStore, item ElkDocument) error {
+func ESCreate(ctx context.Context, store *ESStore, item ESDocument) error {
 	payload, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
 
-	res, err := store.ElkClient.Create(
+	res, err := store.ESClient.Create(
 		store.IndexName,
 		item.DocumentID(),
 		bytes.NewReader(payload),
-		store.ElkClient.Create.WithContext(ctx),
+		store.ESClient.Create.WithContext(ctx),
 	)
 	if err != nil {
 		return err
@@ -64,8 +65,8 @@ func Create(ctx context.Context, store *ElkStore, item ElkDocument) error {
 	return nil
 }
 
-func Exists(ctx context.Context, store *ElkStore, id string) (bool, error) {
-	res, err := store.ElkClient.Exists(store.IndexName, id, store.ElkClient.Exists.WithContext(ctx))
+func ESExists(ctx context.Context, store *ESStore, id string) (bool, error) {
+	res, err := store.ESClient.Exists(store.IndexName, id, store.ESClient.Exists.WithContext(ctx))
 	if err != nil {
 		return false, err
 	}
@@ -80,8 +81,8 @@ func Exists(ctx context.Context, store *ElkStore, id string) (bool, error) {
 	}
 }
 
-func Delete(ctx context.Context, store *ElkStore, id string) (bool, error) {
-	res, err := store.ElkClient.Delete(store.IndexName, id, store.ElkClient.Delete.WithContext(ctx))
+func ESDelete(ctx context.Context, store *ESStore, id string) (bool, error) {
+	res, err := store.ESClient.Delete(store.IndexName, id, store.ESClient.Delete.WithContext(ctx))
 	if err != nil {
 		return false, err
 	}
@@ -106,17 +107,17 @@ type result[T any] struct {
 	Hits *hitsWrap[T] `json:"hits"`
 }
 
-func Search[T any](ctx context.Context, s *ElkStore, queryDoc *esquerydsl.QueryDoc, arrayPtrOut *[]*T) error {
+func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.QueryDoc, arrayPtrOut *[]*T) error {
 
 	queryDoc.Index = s.IndexName
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(queryDoc); err != nil {
 		return err
 	}
-	res, err := s.ElkClient.Search(
-		s.ElkClient.Search.WithIndex(s.IndexName),
-		s.ElkClient.Search.WithBody(&buf),
-		s.ElkClient.Search.WithContext(ctx),
+	res, err := s.ESClient.Search(
+		s.ESClient.Search.WithIndex(s.IndexName),
+		s.ESClient.Search.WithBody(&buf),
+		s.ESClient.Search.WithContext(ctx),
 	)
 	if err != nil {
 		return err

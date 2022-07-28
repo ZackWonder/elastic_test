@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"elastic_test/elkstore"
+	"elastic_test/esstore"
 	"fmt"
 	"net"
 	"net/http"
@@ -40,8 +40,8 @@ func main() {
 	// => panic: dial tcp: i/o timeout
 
 	repo := NewElkPlanetRepo(es)
-	elkstore.Create(context.Background(),
-		repo.ElkStore,
+	esstore.ESCreate(context.Background(),
+		repo.ESStore,
 		&Planet{
 			PlanetID: "999",
 			Name:     "Earth",
@@ -49,8 +49,8 @@ func main() {
 			Status:   "active",
 		})
 	planets := []*Planet{}
-	err = elkstore.Search(context.Background(),
-		repo.ElkStore, &esquerydsl.QueryDoc{
+	err = esstore.ESSearch(context.Background(),
+		repo.ESStore, &esquerydsl.QueryDoc{
 			And: []esquerydsl.QueryItem{
 				{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
 			},
