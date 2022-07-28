@@ -40,24 +40,39 @@ func main() {
 	// => panic: dial tcp: i/o timeout
 
 	repo := NewElkPlanetRepo(es)
-	esstore.ESCreate(context.Background(),
-		repo.ESStore,
-		&Planet{
-			PlanetID: "999",
-			Name:     "Earth",
-			Stage:    "beta",
-			Status:   "active",
-		})
-	planets := []*Planet{}
-	err = esstore.ESSearch(context.Background(),
-		repo.ESStore, &esquerydsl.QueryDoc{
-			And: []esquerydsl.QueryItem{
-				{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
-			},
-		}, &planets)
-	if err != nil {
-		panic(err)
+	{
+		esstore.ESCreate(context.Background(),
+			repo.ESStore,
+			&Planet{
+				PlanetID: "999",
+				Name:     "Earth",
+				Stage:    "beta",
+				Status:   "active",
+			})
 	}
-	fmt.Println(planets)
 
+	{
+		planets := []*Planet{}
+		err := esstore.ESSearch(context.Background(),
+			repo.ESStore, &esquerydsl.QueryDoc{
+				And: []esquerydsl.QueryItem{
+					{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
+				},
+			}, &planets)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(planets)
+	}
+
+	{
+		planet := Planet{}
+		err := esstore.ESFindOne(context.Background(),
+			repo.ESStore, "999", &planet)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(planet)
+
+	}
 }

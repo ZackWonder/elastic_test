@@ -114,6 +114,7 @@ func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.Query
 	if err := json.NewEncoder(&buf).Encode(queryDoc); err != nil {
 		return err
 	}
+
 	res, err := s.ESClient.Search(
 		s.ESClient.Search.WithIndex(s.IndexName),
 		s.ESClient.Search.WithBody(&buf),
@@ -141,5 +142,34 @@ func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.Query
 		*arrayPtrOut = append(*arrayPtrOut, hit.Source)
 	}
 
+	return nil
+}
+
+func ESFindOne[T any](ctx context.Context, s *ESStore, id string, arrayPtrOut *T) error {
+
+	res, err := s.ESClient.Get(
+		s.IndexName,
+		id,
+		s.ESClient.Get.WithContext(ctx),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			return err
+		}
+		return fmt.Errorf("[%s] %s: %s", res.Status(), e["error"].(map[string]interface{})["type"], e["error"].(map[string]interface{})["reason"])
+	}
+
+	var r hits[T]
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return err
+	}
+
+	*arrayPtrOut = *r.Source
 	return nil
 }
