@@ -5,10 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/mottaquikarim/esquerydsl"
 )
 
@@ -21,10 +20,10 @@ type ElkStore struct {
 	IndexName string
 }
 
-func (s *ElkStore) CreateIndex(mapping string) error {
-	res, err := s.ElkClient.Indices.Create(
-		s.IndexName,
-		s.ElkClient.Indices.Create.WithBody(strings.NewReader(mapping)),
+func CreateIndex(store *ElkStore) error {
+	res, err := store.ElkClient.Indices.Create(
+		store.IndexName,
+		// store.ElkClient.Indices.Create.WithBody(strings.NewReader(mapping)),
 	)
 	if err != nil {
 		return err
@@ -33,23 +32,21 @@ func (s *ElkStore) CreateIndex(mapping string) error {
 	if res.IsError() {
 		return fmt.Errorf("error: %s", res)
 	}
-
 	return nil
 }
 
-func (s *ElkStore) Create(item ElkDocument) error {
+func Create(ctx context.Context, store *ElkStore, item ElkDocument) error {
 	payload, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
 
-	ctx := context.Background()
-	res, err := esapi.CreateRequest{
-		Index:      s.IndexName,
-		DocumentID: item.DocumentID(),
-		Body:       bytes.NewReader(payload),
-		// Refresh:    "true",
-	}.Do(ctx, s.ElkClient)
+	res, err := store.ElkClient.Create(
+		store.IndexName,
+		item.DocumentID(),
+		bytes.NewReader(payload),
+		store.ElkClient.Create.WithContext(ctx),
+	)
 	if err != nil {
 		return err
 	}
@@ -67,32 +64,32 @@ func (s *ElkStore) Create(item ElkDocument) error {
 	return nil
 }
 
-func (s *ElkStore) Exists(id string) (bool, error) {
-	res, err := s.ElkClient.Exists(s.IndexName, id)
+func Exists(ctx context.Context, store *ElkStore, id string) (bool, error) {
+	res, err := store.ElkClient.Exists(store.IndexName, id, store.ElkClient.Exists.WithContext(ctx))
 	if err != nil {
 		return false, err
 	}
 
 	switch res.StatusCode {
-	case 200:
+	case http.StatusOK:
 		return true, nil
-	case 404:
+	case http.StatusNotFound:
 		return false, nil
 	default:
 		return false, fmt.Errorf("[%s]", res.Status())
 	}
 }
 
-func (s *ElkStore) Delete(id string) (bool, error) {
-	res, err := s.ElkClient.Delete(s.IndexName, id)
+func Delete(ctx context.Context, store *ElkStore, id string) (bool, error) {
+	res, err := store.ElkClient.Delete(store.IndexName, id, store.ElkClient.Delete.WithContext(ctx))
 	if err != nil {
 		return false, err
 	}
 
 	switch res.StatusCode {
-	case 200:
+	case http.StatusOK:
 		return true, nil
-	case 404:
+	case http.StatusNotFound:
 		return false, nil
 	default:
 		return false, fmt.Errorf("[%s]", res.Status())
@@ -109,7 +106,8 @@ type result[T any] struct {
 	Hits *hitsWrap[T] `json:"hits"`
 }
 
-func Search[T any](s *ElkStore, queryDoc *esquerydsl.QueryDoc, arrayPtrOut *[]*T) error {
+func Search[T any](ctx context.Context, s *ElkStore, queryDoc *esquerydsl.QueryDoc, arrayPtrOut *[]*T) error {
+
 	queryDoc.Index = s.IndexName
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(queryDoc); err != nil {
@@ -118,6 +116,7 @@ func Search[T any](s *ElkStore, queryDoc *esquerydsl.QueryDoc, arrayPtrOut *[]*T
 	res, err := s.ElkClient.Search(
 		s.ElkClient.Search.WithIndex(s.IndexName),
 		s.ElkClient.Search.WithBody(&buf),
+		s.ElkClient.Search.WithContext(ctx),
 	)
 	if err != nil {
 		return err

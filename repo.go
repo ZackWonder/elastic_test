@@ -7,18 +7,14 @@ import (
 )
 
 type ElkPlanetRepo struct {
-	elkstore.ElkStore
+	*elkstore.ElkStore
 }
 
 func NewElkPlanetRepo(client *elasticsearch.Client) *ElkPlanetRepo {
 	return &ElkPlanetRepo{
-		ElkStore: elkstore.ElkStore{
+		ElkStore: &elkstore.ElkStore{
 			IndexName: "planet",
 			ElkClient: client,
 		},
 	}
-}
-
-func (repo *ElkPlanetRepo) Create(p *Planet) error {
-	return repo.ElkStore.Create(p)
 }

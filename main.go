@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"elastic_test/elkstore"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 )
 
 func main() {
+
 	cfg := elasticsearch.Config{
 		Addresses: []string{"http://127.0.0.1:9200"},
 		Transport: &http.Transport{
@@ -38,18 +40,21 @@ func main() {
 	// => panic: dial tcp: i/o timeout
 
 	repo := NewElkPlanetRepo(es)
-	repo.Create(&Planet{
-		PlanetID: "999",
-		Name:     "Earth",
-		Stage:    "beta",
-		Status:   "active",
-	})
+	elkstore.Create(context.Background(),
+		repo.ElkStore,
+		&Planet{
+			PlanetID: "999",
+			Name:     "Earth",
+			Stage:    "beta",
+			Status:   "active",
+		})
 	planets := []*Planet{}
-	err = elkstore.Search(&repo.ElkStore, &esquerydsl.QueryDoc{
-		And: []esquerydsl.QueryItem{
-			{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
-		},
-	}, &planets)
+	err = elkstore.Search(context.Background(),
+		repo.ElkStore, &esquerydsl.QueryDoc{
+			And: []esquerydsl.QueryItem{
+				{Field: "planet_id", Value: "999", Type: esquerydsl.Match},
+			},
+		}, &planets)
 	if err != nil {
 		panic(err)
 	}
