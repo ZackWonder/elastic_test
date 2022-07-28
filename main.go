@@ -70,9 +70,9 @@ func main() {
 			PlanetID: "999",
 			Name:     "Earth",
 			Stage:    "beta",
-			Status:   "active",
+			Status:   "inactive",
 		}
-		err := esstore.ESUpdate(context.Background(),
+		err := esstore.ESUpsert(context.Background(),
 			repo.ESStore, planet)
 		if err != nil {
 			panic(err)
