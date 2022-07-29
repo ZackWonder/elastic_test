@@ -3,8 +3,10 @@ package esstore
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 )
 
 const localTest = true
+
+var indexID = new(int32)
 
 type TestDoc struct {
 	DocID    string    `json:"doc_id" bson:"doc_id,omitempty"`
@@ -51,16 +55,49 @@ func NewTestStore(t *testing.T) *ESStore {
 	if err != nil {
 		panic(err)
 	}
-	return &ESStore{
-		IndexName: "planet",
+	atomic.AddInt32(indexID, 1)
+	s := &ESStore{
+		IndexName: fmt.Sprintf("test_doc_%d", *indexID),
 		ESClient:  es,
 	}
+	ESCreateIndex(context.Background(), s, "{}")
+	return s
+}
+
+func Clear(s *ESStore) {
+	ESDeleteIndex(context.Background(), s)
 }
 
 func TestCreate(t *testing.T) {
 	s := NewTestStore(t)
+	defer Clear(s)
 
 	err := ESCreate(context.Background(),
+		s,
+		&TestDoc{
+			DocID:    "111",
+			Name:     "Earth",
+			Stage:    "beta",
+			Status:   "active",
+			CreateAt: time.Now(),
+		})
+	if err != nil {
+		t.Error(err)
+	}
+	doc := &TestDoc{}
+	err = ESFindOne(context.Background(),
+		s, "111", doc)
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Println(doc.CreateAt)
+}
+
+func TestSearch(t *testing.T) {
+	s := NewTestStore(t)
+	defer Clear(s)
+
+	ESCreateWaitForRefresh(context.Background(),
 		s,
 		&TestDoc{
 			DocID:  "111",
@@ -68,14 +105,6 @@ func TestCreate(t *testing.T) {
 			Stage:  "beta",
 			Status: "active",
 		})
-
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestSearch(t *testing.T) {
-	s := NewTestStore(t)
 
 	docs := []*TestDoc{}
 	err := ESSearch(context.Background(),
@@ -85,14 +114,17 @@ func TestSearch(t *testing.T) {
 			},
 		}, &docs)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
-	t.Log(docs)
+	if len(docs) != 1 {
+		t.Error("expected 1 doc, got", len(docs))
+	}
 
 }
 
 func TestUpdate(t *testing.T) {
 	s := NewTestStore(t)
+	defer Clear(s)
 
 	err := ESUpsert(context.Background(),
 		s, &TestDoc{
@@ -102,34 +134,24 @@ func TestUpdate(t *testing.T) {
 			Status: "inactive",
 		})
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
-}
-
-func TestFindOne(t *testing.T) {
-	s := NewTestStore(t)
-
-	doc := &TestDoc{}
-	err := ESFindOne(context.Background(),
-		s, "111", doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(doc)
 }
 
 func TestDelete(t *testing.T) {
 	s := NewTestStore(t)
+	defer Clear(s)
 
 	_, err := ESDelete(context.Background(),
 		s, "111")
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 }
 
 func TestUpsert(t *testing.T) {
 	s := NewTestStore(t)
+	defer Clear(s)
 
 	err := ESUpsert(context.Background(),
 		s, &TestDoc{
@@ -139,6 +161,6 @@ func TestUpsert(t *testing.T) {
 			Status: "inactive",
 		})
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 }

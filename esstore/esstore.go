@@ -21,7 +21,19 @@ type ESStore struct {
 	IndexName string
 }
 
-func CreateIndex(ctx context.Context, store *ESStore, mapping string) error {
+func ESDeleteIndex(ctx context.Context, store *ESStore) error {
+	res, err := store.ESClient.Indices.Delete([]string{store.IndexName}, store.ESClient.Indices.Delete.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	if res.IsError() {
+		return fmt.Errorf("error: %s", res)
+	}
+	return nil
+}
+
+func ESCreateIndex(ctx context.Context, store *ESStore, mapping string) error {
 	res, err := store.ESClient.Indices.Create(
 		store.IndexName,
 		store.ESClient.Indices.Create.WithBody(strings.NewReader(mapping)),
@@ -47,6 +59,36 @@ func ESCreate(ctx context.Context, store *ESStore, item ESDocument) error {
 		item.DocumentID(),
 		bytes.NewReader(payload),
 		store.ESClient.Create.WithContext(ctx),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			return err
+		}
+		err := e["error"].(map[string]interface{})
+		return fmt.Errorf("[%s] %s: %s", res.Status(), err["type"], err["reason"])
+	}
+
+	return nil
+}
+
+func ESCreateWaitForRefresh(ctx context.Context, store *ESStore, item ESDocument) error {
+	payload, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+
+	res, err := store.ESClient.Create(
+		store.IndexName,
+		item.DocumentID(),
+		bytes.NewReader(payload),
+		store.ESClient.Create.WithContext(ctx),
+		store.ESClient.Create.WithRefresh("wait_for"),
 	)
 	if err != nil {
 		return err
@@ -210,7 +252,7 @@ func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.Query
 		return err
 	}
 
-	*arrayPtrOut = make([]*T, len(r.Hits.Hits))
+	*arrayPtrOut = make([]*T, 0, len(r.Hits.Hits))
 	for _, hit := range r.Hits.Hits {
 		*arrayPtrOut = append(*arrayPtrOut, hit.Source)
 	}
@@ -219,7 +261,6 @@ func ESSearch[T any](ctx context.Context, s *ESStore, queryDoc *esquerydsl.Query
 }
 
 func ESFindOne[T any](ctx context.Context, s *ESStore, id string, arrayPtrOut *T) error {
-
 	res, err := s.ESClient.Get(
 		s.IndexName,
 		id,
@@ -230,19 +271,19 @@ func ESFindOne[T any](ctx context.Context, s *ESStore, id string, arrayPtrOut *T
 	}
 	defer res.Body.Close()
 
-	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+	switch res.StatusCode {
+	case http.StatusOK:
+		var r hits[T]
+		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 			return err
 		}
-		return fmt.Errorf("[%s] %s: %s", res.Status(), e["error"].(map[string]interface{})["type"], e["error"].(map[string]interface{})["reason"])
+
+		*arrayPtrOut = *r.Source
+		return nil
+	// case http.StatusNotFound:
+	// 	return nil
+	default:
+		return fmt.Errorf("[%s]", res.Status())
 	}
 
-	var r hits[T]
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		return err
-	}
-
-	*arrayPtrOut = *r.Source
-	return nil
 }
